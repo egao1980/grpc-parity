@@ -15,7 +15,7 @@
                "uiop"
                "usocket"
                "rove")
-  :properties (:cl-repo (:ci (:with ("dissect" "http2" "http2/client" "http2/server"))))
+  :properties (:cl-repo (:ci (:with ("dissect" "http2"))))
   :serial t
   :pathname "src"
   :components ((:file "package")
