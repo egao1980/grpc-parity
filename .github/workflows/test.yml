@@ -34,6 +34,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache-dependency-path: peers/go/go.sum
+
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
@@ -56,7 +61,7 @@ jobs:
       - uses: egao1980/cl-repository/.github/actions/ci@main
         with:
           phase: install
-          with: http-backend-async event-backend-libuv cl-stack-ssl http2 http2/client
+          with: http-backend-async event-backend-libuv cl-stack-ssl http2 http2/client http2/server http-server-backend-http2
 
       - uses: egao1980/cl-repository/.github/actions/ci@main
         with:

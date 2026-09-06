@@ -8,6 +8,8 @@
     (asdf:load-system "cl-stack-ssl")
     (ignore-errors (asdf:load-system "http2"))
     (ignore-errors (asdf:load-system "http2/client"))
+    (ignore-errors (asdf:load-system "http2/server/threaded"))
+    (ignore-errors (asdf:load-system "http-server-backend-http2"))
     (let ((ensure (find-symbol "ENSURE-TLS" :http-backend-async))
           (ensure-h2 (find-symbol "ENSURE-HTTP2" :http-backend-async)))
       (when (and ensure (fboundp ensure))
