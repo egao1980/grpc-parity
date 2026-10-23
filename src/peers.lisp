@@ -61,10 +61,10 @@
     (usocket:socket-close sock)
     port))
 
-(defun %read-listen-line (proc)
+(defun %read-listen-line (proc &key (seconds 15))
   (let ((out (uiop:process-info-output proc))
         (deadline (+ (get-internal-real-time)
-                     (* 15 internal-time-units-per-second))))
+                     (* seconds internal-time-units-per-second))))
     (loop
       (when (> (get-internal-real-time) deadline)
         (return nil))
@@ -111,8 +111,12 @@
                 :directory (uiop:native-namestring
                             (merge-pathnames "go/" *peer-root*))
                 :output :stream
-                :error-output :stream)))
-    (unless (%read-listen-line proc)
+                ;; Compiler and module chatter goes to stderr. Leaving that
+                ;; pipe unread fills it and go blocks before printing LISTEN.
+                :error-output :output)))
+    ;; Cold `go run` on macOS/Windows CI exceeds 15s (the previous deadline
+    ;; fired while the process was still compiling).
+    (unless (%read-listen-line proc :seconds 120)
       (ignore-errors (uiop:terminate-process proc :urgent t))
       (error "grpc-go server failed to start on ~A" port))
     (values proc port)))
@@ -133,5 +137,9 @@
          :output '(:string :stripped t)
          :error-output '(:string :stripped t)
          :ignore-error-status t)
-      (declare (ignore err))
-      (values (zerop code) out))))
+      (values (zerop code)
+              (if (and (not (zerop code))
+                       (stringp err)
+                       (plusp (length err)))
+                  (format nil "~A~%~A" out err)
+                  out)))))
