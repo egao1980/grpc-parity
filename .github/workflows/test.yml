@@ -36,7 +36,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.22.x"
+          # macOS 26 dyld rejects Go ≤1.23 binaries (missing LC_UUID).
+          go-version: "1.25.x"
           cache-dependency-path: peers/go/go.sum
 
       - uses: astral-sh/setup-uv@v6
