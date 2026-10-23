@@ -147,7 +147,10 @@ func main() {
 		opts = append(opts, grpc.Creds(creds))
 	}
 	s := grpc.NewServer(opts...)
+	// Stdout is fully buffered when piped. Without a flush the Lisp
+	// harness never sees LISTEN and kills a server that is already up.
 	fmt.Printf("LISTEN %s\n", port)
+	os.Stdout.Sync()
 	if err := s.Serve(lis); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
