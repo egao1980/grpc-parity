@@ -62,19 +62,34 @@
     port))
 
 (defun %read-listen-line (proc &key (seconds 15))
+  "Wait until PROC prints a line containing LISTEN.
+
+Drain stdout and stderr so a full pipe cannot stall the child. Return
+(values line log). LINE is NIL on timeout or early exit; LOG is the text
+seen so far."
   (let ((out (uiop:process-info-output proc))
+        (err (ignore-errors (uiop:process-info-error-output proc)))
         (deadline (+ (get-internal-real-time)
-                     (* seconds internal-time-units-per-second))))
-    (loop
-      (when (> (get-internal-real-time) deadline)
-        (return nil))
-      (when (listen out)
-        (let ((line (read-line out nil nil)))
-          (when (and line (search "LISTEN" line))
-            (return line))))
-      (unless (uiop:process-alive-p proc)
-        (return nil))
-      (sleep 0.05))))
+                     (* seconds internal-time-units-per-second)))
+        (lines nil))
+    (labels ((log-text ()
+               (format nil "~{~A~%~}" (nreverse lines)))
+             (drain (stream)
+               (when (and stream (listen stream))
+                 (let ((line (read-line stream nil nil)))
+                   (when line
+                     (push line lines)
+                     (when (search "LISTEN" line)
+                       (return-from %read-listen-line
+                         (values line (log-text)))))))))
+      (loop
+        (when (> (get-internal-real-time) deadline)
+          (return (values nil (log-text))))
+        (drain out)
+        (drain err)
+        (unless (uiop:process-alive-p proc)
+          (return (values nil (log-text))))
+        (sleep 0.05)))))
 
 (defun start-grpcio-server (&key (port (%free-port)))
   (let* ((script (merge-pathnames "python/server.py" *peer-root*))
@@ -88,9 +103,11 @@
                       (uiop:native-namestring key))
                 :output :stream
                 :error-output :stream)))
-    (unless (%read-listen-line proc)
-      (ignore-errors (uiop:terminate-process proc :urgent t))
-      (error "grpcio server failed to start on ~A" port))
+    (multiple-value-bind (line log)
+        (%read-listen-line proc)
+      (unless line
+        (ignore-errors (uiop:terminate-process proc :urgent t))
+        (error "grpcio server failed to start on ~A~%~A" port (or log ""))))
     (values proc port)))
 
 (defun stop-grpcio-server (proc)
@@ -111,14 +128,15 @@
                 :directory (uiop:native-namestring
                             (merge-pathnames "go/" *peer-root*))
                 :output :stream
-                ;; Compiler and module chatter goes to stderr. Leaving that
-                ;; pipe unread fills it and go blocks before printing LISTEN.
-                :error-output :output)))
-    ;; Cold `go run` on macOS/Windows CI exceeds 15s (the previous deadline
-    ;; fired while the process was still compiling).
-    (unless (%read-listen-line proc :seconds 120)
-      (ignore-errors (uiop:terminate-process proc :urgent t))
-      (error "grpc-go server failed to start on ~A" port))
+                ;; Read stderr too: `go run` logs there, and an unread pipe
+                ;; fills and stalls the process before LISTEN.
+                :error-output :stream)))
+    ;; Cold `go run` on macOS/Windows CI exceeds 15s.
+    (multiple-value-bind (line log)
+        (%read-listen-line proc :seconds 120)
+      (unless line
+        (ignore-errors (uiop:terminate-process proc :urgent t))
+        (error "grpc-go server failed to start on ~A~%~A" port (or log ""))))
     (values proc port)))
 
 (defun stop-go-server (proc)
